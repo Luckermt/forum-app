@@ -1,13 +1,16 @@
 package main
 
 import (
+	"net/http"
+
+	"github.com/Luckermt/forum-app/auth-service/internal/grpc"
+	"github.com/Luckermt/forum-app/auth-service/internal/repository"
+	"github.com/Luckermt/forum-app/auth-service/internal/service"
+
+	"github.com/Luckermt/forum-app/auth-service/internal/handler"
 	"github.com/luckermt/shared/pkg/config"
 	"github.com/luckermt/shared/pkg/logger"
-	"auth-service/internal/handler"
-	"auth-service/internal/repository"
-	"auth-service/internal/service"
-	"auth-service/internal/grpc"
-	"net/http"
+	"go.uber.org/zap"
 )
 
 func main() {
