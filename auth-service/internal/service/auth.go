@@ -11,9 +11,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService struct {
-	repo Repository
-	jwt  config.JWTConfig
+type AuthService interface {
+	Register(user *models.User) error
+	Login(email, password string) (string, error)
+	BlockUser(userID string) error
+	ValidateToken(token string) (string, error)
+	GetUserRole(userID string) (string, bool, error)
 }
 
 func NewAuthService(repo Repository, jwt config.JWTConfig) *AuthService {

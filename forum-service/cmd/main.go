@@ -1,10 +1,10 @@
 package main
 
 import (
-	"forum-service/internal/grpc"
-	"forum-service/internal/handler"
-	"forum-service/internal/repository"
-	"forum-service/internal/service"
+	"github.com/Luckermt/forum-app/forum-service/internal/grpc"
+	"github.com/Luckermt/forum-app/forum-service/internal/handler"
+	"github.com/Luckermt/forum-app/forum-service/internal/repository"
+	"github.com/Luckermt/forum-app/forum-service/internal/service"
 	"net/http"
 	"time"
 

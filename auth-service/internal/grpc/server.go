@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/luckermt/shared/proto"
+	"github.com/Luckermt/shared/proto"
 	"google.golang.org/grpc"
 )
 
