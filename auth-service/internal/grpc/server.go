@@ -5,45 +5,43 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/Luckermt/shared/proto"
+	"github.com/luckermt/forum-app/auth-service/internal/service"
+	"github.com/luckermt/forum-app/shared/proto"
 	"google.golang.org/grpc"
 )
 
+// AuthServer реализует gRPC сервер для аутентификации
 type AuthServer struct {
-	server *grpc.Server
 	proto.UnimplementedAuthServiceServer
-	service AuthService
+	authService service.AuthService
 }
 
-func NewAuthServer(service AuthService) *AuthServer {
-	srv := grpc.NewServer()
-	authServer := &AuthServer{
-		server:  srv,
-		service: service,
+// NewAuthServer создает новый экземпляр AuthServer
+func NewAuthServer(authService service.AuthService) *AuthServer {
+	return &AuthServer{
+		authService: authService,
 	}
-	proto.RegisterAuthServiceServer(srv, authServer)
-	return authServer
 }
 
+// Start запускает gRPC сервер
 func (s *AuthServer) Start(port string) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 
-	if err := s.server.Serve(lis); err != nil {
+	server := grpc.NewServer()
+	proto.RegisterAuthServiceServer(server, s)
+
+	if err := server.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve: %v", err)
 	}
 	return nil
 }
 
-func (s *AuthServer) Stop() {
-	s.server.GracefulStop()
-}
-
-// Реализация gRPC методов
+// ValidateToken реализует gRPC метод проверки токена
 func (s *AuthServer) ValidateToken(ctx context.Context, req *proto.TokenRequest) (*proto.TokenResponse, error) {
-	userID, err := s.service.ValidateToken(req.Token)
+	userID, err := s.authService.ValidateToken(req.Token)
 	if err != nil {
 		return &proto.TokenResponse{Valid: false}, nil
 	}
@@ -53,8 +51,9 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *proto.TokenRequest)
 	}, nil
 }
 
+// GetUserRole реализует gRPC метод получения роли пользователя
 func (s *AuthServer) GetUserRole(ctx context.Context, req *proto.UserRequest) (*proto.UserResponse, error) {
-	role, blocked, err := s.service.GetUserRole(req.UserId)
+	role, blocked, err := s.authService.GetUserRole(req.UserId)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/luckermt/shared/proto"
+	"github.com/luckermt/forum-app/shared/proto"
 	"google.golang.org/grpc"
 )
 
@@ -36,4 +36,13 @@ func (c *AuthClient) ValidateToken(token string) (string, error) {
 	}
 
 	return resp.UserId, nil
+}
+func (c *AuthClient) IsUserAdmin(userID string) (bool, error) {
+	resp, err := c.client.GetUserRole(context.Background(), &proto.UserRequest{
+		UserId: userID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.Role == "admin", nil
 }

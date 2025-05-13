@@ -1,4 +1,4 @@
-module github.com/Luckermt/forum-app
+module github.com/luckermt/forum-app
 
 go 1.24.3
 
@@ -19,7 +19,7 @@ require (
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a // indirect
-	google.golang.org/protobuf v1.36.5 // indirect
+	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
@@ -27,7 +27,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/luckermt/shared v0.0.0-20250512205236-97fffa1cf869 // indirect
+	github.com/lib/pq v1.10.9
+	github.com/luckermt/shared v0.0.0-20250512205236-97fffa1cf869
 	github.com/swaggo/swag v1.16.4
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/crypto v0.38.0

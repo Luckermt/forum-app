@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/Luckermt/forum-app/forum-service/internal/grpc"
-	"github.com/Luckermt/forum-app/forum-service/internal/handler"
-	"github.com/Luckermt/forum-app/forum-service/internal/repository"
-	"github.com/Luckermt/forum-app/forum-service/internal/service"
 	"net/http"
 	"time"
+
+	"github.com/luckermt/forum-app/forum-service/internal/grpc"
+	"github.com/luckermt/forum-app/forum-service/internal/handler"
+	"github.com/luckermt/forum-app/forum-service/internal/repository"
+	"github.com/luckermt/forum-app/forum-service/internal/service"
 
 	"github.com/luckermt/shared/pkg/config"
 	"github.com/luckermt/shared/pkg/logger"
@@ -43,10 +44,10 @@ func main() {
 	chatHandler := handler.NewChatHandler(forumService)
 
 	// Настройка маршрутов
-	http.HandleFunc("/topics", forumHandler.HandleTopics)
-	http.HandleFunc("/topics/create", forumHandler.CreateTopic)
-	http.HandleFunc("/topics/delete", forumHandler.DeleteTopic)
-	http.HandleFunc("/messages", forumHandler.GetMessages)
+	http.HandleFunc("POST /topics", forumHandler.CreateTopic)
+	http.HandleFunc("DELETE /topics/{id}", forumHandler.DeleteTopic)
+	http.HandleFunc("GET /topics", forumHandler.GetTopics)
+	http.HandleFunc("GET /messages", forumHandler.GetMessages)
 	http.HandleFunc("/ws", chatHandler.HandleConnections)
 
 	// Запуск очистки старых сообщений

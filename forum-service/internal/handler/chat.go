@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"forum-service/internal/service"
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/luckermt/shared/pkg/logger"
+	"github.com/luckermt/forum-app/forum-service/internal/service"
+	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"go.uber.org/zap"
 )
 
@@ -13,15 +13,15 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		return true // В production замените на проверку origin
 	},
 }
 
 type ChatHandler struct {
-	service *service.ForumService
+	service service.ForumService
 }
 
-func NewChatHandler(service *service.ForumService) *ChatHandler {
+func NewChatHandler(service service.ForumService) *ChatHandler {
 	return &ChatHandler{service: service}
 }
 
@@ -30,20 +30,23 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 	token := r.URL.Query().Get("token")
 	userID, err := h.service.ValidateUser(token)
 	if err != nil {
-		logger.Log.Error("Unauthorized websocket connection", zap.Error(err))
+		logger.Log.Error("Unauthorized websocket connection",
+			zap.Error(err))
 		return
 	}
 
 	// Обновление соединения до WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Error("Failed to upgrade to websocket", zap.Error(err))
+		logger.Log.Error("Failed to upgrade to websocket",
+			zap.Error(err))
 		return
 	}
 	defer conn.Close()
 
 	// Регистрация клиента
 	h.service.RegisterClient(userID, conn)
+	defer h.service.UnregisterClient(userID)
 
 	for {
 		var msg struct {
@@ -51,14 +54,19 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 		}
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			logger.Log.Error("Error reading message", zap.Error(err))
-			h.service.UnregisterClient(userID)
+			if websocket.IsUnexpectedCloseError(err) {
+				logger.Log.Info("WebSocket closed",
+					zap.String("user_id", userID),
+					zap.Error(err))
+			}
 			break
 		}
 
-		// Сохранение и рассылка сообщения
+		// Обработка сообщения
 		if err := h.service.HandleChatMessage(userID, msg.Text); err != nil {
-			logger.Log.Error("Error handling message", zap.Error(err))
+			logger.Log.Error("Failed to handle chat message",
+				zap.String("user_id", userID),
+				zap.Error(err))
 		}
 	}
 }
