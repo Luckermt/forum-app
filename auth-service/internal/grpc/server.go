@@ -6,19 +6,24 @@ import (
 	"net"
 
 	"github.com/luckermt/forum-app/auth-service/internal/service"
+	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/proto"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
 // AuthServer реализует gRPC сервер для аутентификации
 type AuthServer struct {
-	proto.UnimplementedAuthServiceServer
+	grpcServer  *grpc.Server // переименовано из server в grpcServer для ясности
 	authService service.AuthService
+	proto.UnimplementedAuthServiceServer
 }
 
 // NewAuthServer создает новый экземпляр AuthServer
 func NewAuthServer(authService service.AuthService) *AuthServer {
+	srv := grpc.NewServer()
 	return &AuthServer{
+		grpcServer:  srv,
 		authService: authService,
 	}
 }
@@ -30,13 +35,19 @@ func (s *AuthServer) Start(port string) error {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 
-	server := grpc.NewServer()
-	proto.RegisterAuthServiceServer(server, s)
+	logger.Log.Info("Starting gRPC server",
+		zap.String("port", port),
+		zap.String("service", "auth"))
 
-	if err := server.Serve(lis); err != nil {
-		return fmt.Errorf("failed to serve: %v", err)
+	return s.grpcServer.Serve(lis)
+}
+
+// Stop корректно останавливает gRPC сервер
+func (s *AuthServer) Stop() {
+	if s.grpcServer != nil {
+		logger.Log.Info("Gracefully stopping gRPC server")
+		s.grpcServer.GracefulStop()
 	}
-	return nil
 }
 
 // ValidateToken реализует gRPC метод проверки токена

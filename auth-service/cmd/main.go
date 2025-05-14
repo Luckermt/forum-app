@@ -3,48 +3,62 @@ package main
 import (
 	"net/http"
 
+	"github.com/joho/godotenv"
 	"github.com/luckermt/forum-app/auth-service/internal/grpc"
+	"github.com/luckermt/forum-app/auth-service/internal/handler"
 	"github.com/luckermt/forum-app/auth-service/internal/repository"
 	"github.com/luckermt/forum-app/auth-service/internal/service"
-
-	"github.com/luckermt/forum-app/auth-service/internal/handler"
-	"github.com/luckermt/shared/pkg/config"
-	"github.com/luckermt/shared/pkg/logger"
-	
+	"github.com/luckermt/forum-app/shared/pkg/config"
+	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"go.uber.org/zap"
 )
 
 func main() {
-	// Инициализация логгера
+	// 1. Инициализация логгера (самое первое!)
 	if err := logger.Init(); err != nil {
-		panic(err)
+		panic("Failed to initialize logger: " + err.Error())
 	}
 	defer logger.Log.Sync()
 
-	// Загрузка конфигурации
-	cfg := config.Load()
+	// 2. Загрузка .env файла
+	envPath := "D:/Programming_Code/VisualStudioCode/forum-app/.env"
+	if err := godotenv.Load(envPath); err != nil {
+		logger.Log.Fatal("Error loading .env file",
+			zap.String("path", envPath),
+			zap.Error(err))
+	}
 
-	// Инициализация репозитория
+	// 3. Загрузка конфигурации
+	cfg := config.Load()
+	logger.Log.Info("DB connection config",
+		zap.String("host", cfg.Postgres.Host),
+		zap.String("port", cfg.Postgres.Port),
+		zap.String("user", cfg.Postgres.User),
+		zap.String("dbname", cfg.Postgres.DBName))
+
+	// 4. Инициализация репозитория
 	repo, err := repository.NewPostgresRepository(cfg.Postgres)
 	if err != nil {
 		logger.Log.Fatal("Failed to initialize repository", zap.Error(err))
 	}
 
-	// Инициализация сервиса
+	// 5. Инициализация сервисов
 	authService := service.NewAuthService(repo, cfg.JWT)
-
-	// Инициализация gRPC сервера
 	grpcServer := grpc.NewAuthServer(authService)
-	go grpcServer.Start(cfg.GRPC.AuthServicePort)
 
-	// Инициализация HTTP обработчиков
+	// 6. Запуск gRPC сервера
+	go func() {
+		if err := grpcServer.Start(cfg.GRPC.AuthServicePort); err != nil {
+			logger.Log.Fatal("Failed to start gRPC server", zap.Error(err))
+		}
+	}()
+	defer grpcServer.Stop()
+
+	// 7. Инициализация HTTP сервера
 	authHandler := handler.NewAuthHandler(authService)
-
-	// Настройка маршрутов
 	http.HandleFunc("/register", authHandler.Register)
 	http.HandleFunc("/login", authHandler.Login)
 
-	// Запуск HTTP сервера
 	logger.Log.Info("Starting auth service", zap.String("port", cfg.Server.Port))
 	if err := http.ListenAndServe(":"+cfg.Server.Port, nil); err != nil {
 		logger.Log.Fatal("Failed to start auth service", zap.Error(err))

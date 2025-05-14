@@ -10,6 +10,7 @@ import (
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
+	"go.uber.org/zap"
 )
 
 type PostgresRepository struct {
@@ -17,14 +18,25 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(cfg config.PostgresConfig) (*PostgresRepository, error) {
+	// Убедимся, что логгер инициализирован
+	if logger.Log == nil {
+		if err := logger.Init(); err != nil {
+			return nil, fmt.Errorf("failed to initialize logger: %w", err)
+		}
+	}
+
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
 	)
 
+	logger.Log.Info("Connecting to PostgreSQL", zap.String("connStr",
+		fmt.Sprintf("host=%s port=%s user=%s dbname=%s",
+			cfg.Host, cfg.Port, cfg.User, cfg.DBName)))
+
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+		return nil, fmt.Errorf("failed to open PostgreSQL connection: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
