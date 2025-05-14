@@ -5,17 +5,28 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
+	_ "github.com/luckermt/forum-app/forum-service/docs"                 // Важно!
 	authGrpc "github.com/luckermt/forum-app/forum-service/internal/grpc" // Переименованный импорт
 	"github.com/luckermt/forum-app/forum-service/internal/handler"
 	"github.com/luckermt/forum-app/forum-service/internal/repository"
 	"github.com/luckermt/forum-app/forum-service/internal/service"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
+	httpSwagger "github.com/swaggo/http-swagger" // пакет для UI
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// @title Forum Service API
+// @version 1.0
+// @description API для управления темами и сообщениями форума
+// @host localhost:8081
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	// Инициализация логгера
 	if err := logger.Init(); err != nil {
@@ -73,7 +84,7 @@ func main() {
 	http.HandleFunc("GET /topics", forumHandler.GetTopics)
 	http.HandleFunc("GET /messages", forumHandler.GetMessages)
 	http.HandleFunc("/ws", chatHandler.HandleConnections)
-
+	http.Handle("/swagger/", httpSwagger.WrapHandler)
 	// Запуск очистки старых сообщений
 	go forumService.CleanOldMessages(24 * time.Hour)
 
@@ -82,4 +93,5 @@ func main() {
 	if err := http.ListenAndServe(":"+cfg.Server.Port, nil); err != nil {
 		logger.Log.Fatal("Failed to start forum service", zap.Error(err))
 	}
+
 }

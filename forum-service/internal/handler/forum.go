@@ -19,6 +19,18 @@ func NewForumHandler(service service.ForumService) *ForumHandler {
 	return &ForumHandler{service: service}
 }
 
+// @Summary Создать тему
+// @Description Создание новой темы форума (только для авторизованных пользователей)
+// @Tags topics
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param input body models.TopicRequest true "Данные темы"
+// @Success 201 {object} models.Topic
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /topics [post]
 func (h *ForumHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	var req models.TopicRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -45,6 +57,16 @@ func (h *ForumHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(topic)
 }
 
+// @Summary Удалить тему
+// @Description Удаление темы (только для администраторов)
+// @Tags topics
+// @Security ApiKeyAuth
+// @Param id path string true "ID темы"
+// @Success 204
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /topics/{id} [delete]
 func (h *ForumHandler) DeleteTopic(w http.ResponseWriter, r *http.Request) {
 	topicID := r.PathValue("id")
 	userID, err := utils.GetUserIDFromContext(r.Context())
@@ -62,6 +84,13 @@ func (h *ForumHandler) DeleteTopic(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary Получить все темы
+// @Description Получение списка всех активных тем
+// @Tags topics
+// @Produce json
+// @Success 200 {array} models.Topic
+// @Failure 500 {object} map[string]string
+// @Router /topics [get]
 func (h *ForumHandler) GetTopics(w http.ResponseWriter, r *http.Request) {
 	topics, err := h.service.GetTopics()
 	if err != nil {
@@ -74,6 +103,15 @@ func (h *ForumHandler) GetTopics(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(topics)
 }
 
+// @Summary Получить сообщения
+// @Description Получение сообщений по теме или общего чата
+// @Tags messages
+// @Produce json
+// @Param topic_id query string false "ID темы (если нужны сообщения темы)"
+// @Success 200 {array} models.Message
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /messages [get]
 func (h *ForumHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	topicID := r.URL.Query().Get("topic_id")
 	var messages []*models.Message

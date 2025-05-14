@@ -25,6 +25,11 @@ func NewChatHandler(service service.ForumService) *ChatHandler {
 	return &ChatHandler{service: service}
 }
 
+// @Summary WebSocket чат
+// @Description Подключение к чату через WebSocket
+// @Tags chat
+// @Param token query string true "JWT токен"
+// @Router /ws [get]
 func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Проверка аутентификации
 	token := r.URL.Query().Get("token")

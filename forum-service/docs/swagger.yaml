@@ -1,4 +1,190 @@
+basePath: /
+definitions:
+  models.Message:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      topic_id:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.Topic:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.TopicRequest:
+    properties:
+      content:
+        type: string
+      title:
+        type: string
+    type: object
+host: localhost:8081
 info:
   contact: {}
-paths: {}
+  description: API для управления темами и сообщениями форума
+  title: Forum Service API
+  version: "1.0"
+paths:
+  /messages:
+    get:
+      description: Получение сообщений по теме или общего чата
+      parameters:
+      - description: ID темы (если нужны сообщения темы)
+        in: query
+        name: topic_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Message'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить сообщения
+      tags:
+      - messages
+  /topics:
+    get:
+      description: Получение списка всех активных тем
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Topic'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить все темы
+      tags:
+      - topics
+    post:
+      consumes:
+      - application/json
+      description: Создание новой темы форума (только для авторизованных пользователей)
+      parameters:
+      - description: Данные темы
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/models.TopicRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Topic'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Создать тему
+      tags:
+      - topics
+  /topics/{id}:
+    delete:
+      description: Удаление темы (только для администраторов)
+      parameters:
+      - description: ID темы
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Удалить тему
+      tags:
+      - topics
+  /ws:
+    get:
+      description: Подключение к чату через WebSocket
+      parameters:
+      - description: JWT токен
+        in: query
+        name: token
+        required: true
+        type: string
+      responses: {}
+      summary: WebSocket чат
+      tags:
+      - chat
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"
