@@ -4,11 +4,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/luckermt/forum-app/auth-service/internal/repository"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
-	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -102,3 +102,23 @@ func (s *authServiceImpl) GetUserRole(userID string) (string, bool, error) {
 	}
 	return user.Role, user.Blocked, nil
 }
+
+// func TestAuthService_Register(t *testing.T) {
+// 	repo := &mocks.Repository{}
+// 	jwtCfg := config.JWTConfig{SecretKey: "test", ExpiresIn: time.Hour}
+
+// 	authSvc := service.NewAuthService(repo, jwtCfg)
+
+// 	t.Run("success", func(t *testing.T) {
+// 		user := &models.User{
+// 			Email:    "test@example.com",
+// 			Password: "password",
+// 		}
+
+// 		repo.On("CreateUser", user).Return(nil)
+
+// 		err := authSvc.Register(user)
+// 		assert.NoError(t, err)
+// 		repo.AssertExpectations(t)
+// 	})
+// }

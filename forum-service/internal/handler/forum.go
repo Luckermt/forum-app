@@ -94,3 +94,16 @@ func (h *ForumHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(messages)
 }
+
+// func TestForumHandler_GetTopics(t *testing.T) {
+// 	mockSvc := &mocks.ForumService{}
+// 	mockSvc.On("GetTopics").Return([]*models.Topic{{ID: "1", Title: "Test"}}, nil)
+
+// 	handler := handler.NewForumHandler(mockSvc)
+// 	req := httptest.NewRequest("GET", "/topics", nil)
+// 	w := httptest.NewRecorder()
+
+// 	handler.GetTopics(w, req)
+// 	assert.Equal(t, http.StatusOK, w.Code)
+// 	mockSvc.AssertExpectations(t)
+// }

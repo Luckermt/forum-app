@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"testing"
 	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -166,4 +168,46 @@ func (r *PostgresRepository) IsUserBlocked(userID string) (bool, error) {
 		return false, nil
 	}
 	return blocked, err
+}
+func TestPostgresRepository_CreateTopic(t *testing.T) {
+	cfg := config.PostgresConfig{
+		Host:     "localhost",
+		Port:     "5432",
+		User:     "postgres",
+		Password: "postgres",
+		DBName:   "forum_test",
+		SSLMode:  "disable",
+	}
+
+	repo, err := NewPostgresRepository(cfg)
+	assert.NoError(t, err)
+
+	topic := &models.Topic{
+		ID:        "test-topic-id",
+		Title:     "Test Topic",
+		Content:   "Test Content",
+		UserID:    "test-user-id",
+		CreatedAt: time.Now(),
+	}
+
+	err = repo.CreateTopic(topic)
+	assert.NoError(t, err)
+}
+
+func TestPostgresRepository_GetTopics(t *testing.T) {
+	cfg := config.PostgresConfig{
+		Host:     "localhost",
+		Port:     "5432",
+		User:     "postgres",
+		Password: "postgres",
+		DBName:   "forum_test",
+		SSLMode:  "disable",
+	}
+
+	repo, err := NewPostgresRepository(cfg)
+	assert.NoError(t, err)
+
+	topics, err := repo.GetTopics()
+	assert.NoError(t, err)
+	assert.NotNil(t, topics)
 }
