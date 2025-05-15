@@ -20,7 +20,7 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(cfg config.PostgresConfig) (*PostgresRepository, error) {
-	// Убедимся, что логгер инициализирован
+	
 	if logger.Log == nil {
 		if err := logger.Init(); err != nil {
 			return nil, fmt.Errorf("failed to initialize logger: %w", err)

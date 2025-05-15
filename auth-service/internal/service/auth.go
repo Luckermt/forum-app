@@ -2,41 +2,50 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/luckermt/forum-app/auth-service/internal/repository"
-	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService определяет интерфейс для сервиса аутентификации
+// AuthService определяет контракт сервиса аутентификации
 type AuthService interface {
 	Register(user *models.User) error
 	Login(email, password string) (string, error)
-	BlockUser(userID string) error
 	ValidateToken(token string) (string, error)
 	GetUserRole(userID string) (string, bool, error)
 }
 
-// authServiceImpl реализует AuthService
 type authServiceImpl struct {
-	repo repository.Repository
-	jwt  config.JWTConfig
+	repo      repository.Repository
+	jwtSecret string
 }
 
-// NewAuthService создает новый экземпляр AuthService
-func NewAuthService(repo repository.Repository, jwt config.JWTConfig) AuthService {
+func NewAuthService(repo repository.Repository, jwtSecret string) AuthService {
+	// Инициализация логгера при создании сервиса
+	if logger.Log == nil {
+		if err := logger.Init(); err != nil {
+			panic("Failed to initialize logger")
+		}
+	}
+
 	return &authServiceImpl{
-		repo: repo,
-		jwt:  jwt,
+		repo:      repo,
+		jwtSecret: jwtSecret,
 	}
 }
 
 func (s *authServiceImpl) Register(user *models.User) error {
+	// Проверка инициализации логгера
+	if logger.Log == nil {
+		return errors.New("logger not initialized")
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		logger.Log.Error("Failed to hash password", zap.Error(err))
@@ -44,7 +53,7 @@ func (s *authServiceImpl) Register(user *models.User) error {
 	}
 
 	user.Password = string(hashedPassword)
-	user.Role = "user" // По умолчанию обычный пользователь
+	user.Role = "user"
 	user.CreatedAt = time.Now()
 	user.Blocked = false
 
@@ -52,39 +61,69 @@ func (s *authServiceImpl) Register(user *models.User) error {
 }
 
 func (s *authServiceImpl) Login(email, password string) (string, error) {
+
+	logger.Log.Debug("Login attempt",
+		zap.String("email", email),
+		zap.Time("timestamp", time.Now()),
+	)
+
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
-		return "", err
+		logger.Log.Error("Database error",
+			zap.Error(err),
+			zap.String("email", email),
+		)
+		return "", fmt.Errorf("internal server error")
+	}
+
+	if user == nil {
+		logger.Log.Warn("User not found", zap.String("email", email))
+		return "", ErrInvalidCredentials
+	}
+
+	logger.Log.Debug("User data from DB",
+		zap.String("db_email", user.Email),
+		zap.String("db_pwd_prefix", user.Password[:10]),
+		zap.Bool("blocked", user.Blocked),
+	)
+
+	if user.Blocked {
+		logger.Log.Warn("Blocked user attempt", zap.String("email", email))
+		return "", ErrUserBlocked
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return "", errors.New("invalid credentials")
+		logger.Log.Warn("Password mismatch",
+			zap.String("input_pwd", maskPassword(password)),
+			zap.String("db_pwd_prefix", user.Password[:10]),
+			zap.Error(err),
+		)
+		return "", ErrInvalidCredentials
 	}
 
-	// Генерация JWT токена
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"exp":     time.Now().Add(s.jwt.ExpiresIn).Unix(),
-	})
-
-	return token.SignedString([]byte(s.jwt.SecretKey))
+	logger.Log.Info("Successful login", zap.String("email", email))
+	return s.generateJWTToken(user)
 }
 
-func (s *authServiceImpl) BlockUser(userID string) error {
-	return s.repo.BlockUser(userID)
+func (s *authServiceImpl) generateJWTToken(user *models.User) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": user.ID,
+		"email":   user.Email,
+		"role":    user.Role,
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
+	})
+
+	return token.SignedString([]byte(s.jwtSecret))
 }
 
 func (s *authServiceImpl) ValidateToken(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return []byte(s.jwt.SecretKey), nil
+		return []byte(s.jwtSecret), nil
 	})
-	if err != nil {
-		return "", err
-	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		if userID, ok := claims["user_id"].(string); ok {
@@ -92,7 +131,7 @@ func (s *authServiceImpl) ValidateToken(tokenString string) (string, error) {
 		}
 	}
 
-	return "", errors.New("invalid token")
+	return "", err
 }
 
 func (s *authServiceImpl) GetUserRole(userID string) (string, bool, error) {
@@ -102,23 +141,19 @@ func (s *authServiceImpl) GetUserRole(userID string) (string, bool, error) {
 	}
 	return user.Role, user.Blocked, nil
 }
+func maskPassword(pwd string) string {
+	if len(pwd) == 0 {
+		return ""
+	}
+	if len(pwd) == 1 {
+		return "*"
+	}
+	return string(pwd[0]) + "***" + string(pwd[len(pwd)-1])
+}
 
-// func TestAuthService_Register(t *testing.T) {
-// 	repo := &mocks.Repository{}
-// 	jwtCfg := config.JWTConfig{SecretKey: "test", ExpiresIn: time.Hour}
-
-// 	authSvc := service.NewAuthService(repo, jwtCfg)
-
-// 	t.Run("success", func(t *testing.T) {
-// 		user := &models.User{
-// 			Email:    "test@example.com",
-// 			Password: "password",
-// 		}
-
-// 		repo.On("CreateUser", user).Return(nil)
-
-// 		err := authSvc.Register(user)
-// 		assert.NoError(t, err)
-// 		repo.AssertExpectations(t)
-// 	})
-// }
+var (
+	ErrEmailExists        = errors.New("email already exists")
+	ErrUsernameExists     = errors.New("username already exists")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUserBlocked        = errors.New("user is blocked")
+)

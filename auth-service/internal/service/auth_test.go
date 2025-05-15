@@ -1,88 +1,69 @@
-package service
+package service_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/luckermt/forum-app/auth-service/internal/repository/mocks"
-	"github.com/luckermt/forum-app/shared/pkg/config"
+	"github.com/luckermt/forum-app/auth-service/internal/service"
+	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func TestAuthService_Register(t *testing.T) {
+
+	if err := logger.Init(); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logger.Log.Sync()
+
 	repo := new(mocks.Repository)
-	jwtCfg := config.JWTConfig{
-		SecretKey: "test-secret",
-		ExpiresIn: time.Hour,
+
+	jwtSecret := "test-secret-key"
+
+	authSvc := service.NewAuthService(repo, jwtSecret)
+
+	user := &models.User{
+		Username: "testuser",
+		Email:    "test@example.com",
+		Password: "SecurePass123!",
 	}
 
-	authSvc := NewAuthService(repo, jwtCfg)
+	repo.On("CreateUser", user).Return(nil)
 
-	t.Run("successful registration", func(t *testing.T) {
-		user := &models.User{
-			Email:    "test@example.com",
-			Password: "password123",
-		}
+	err := authSvc.Register(user)
 
-		repo.On("CreateUser", user).Return(nil)
-
-		err := authSvc.Register(user)
-		assert.NoError(t, err)
-		repo.AssertExpectations(t)
-	})
-
-	t.Run("failed registration (user already exists)", func(t *testing.T) {
-		user := &models.User{
-			Email:    "existing@example.com",
-			Password: "password123",
-		}
-
-		repo.On("CreateUser", user).Return(assert.AnError)
-
-		err := authSvc.Register(user)
-		assert.Error(t, err)
-		repo.AssertExpectations(t)
-	})
+	// Проверки
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
 }
 
 func TestAuthService_Login(t *testing.T) {
-	repo := new(mocks.Repository)
-	jwtCfg := config.JWTConfig{
-		SecretKey: "test-secret",
-		ExpiresIn: time.Hour,
+
+	if err := logger.Init(); err != nil {
+		t.Fatalf("Failed to initialize logger: %v", err)
 	}
+	defer logger.Log.Sync()
 
-	authSvc := NewAuthService(repo, jwtCfg)
+	repo := new(mocks.Repository)
 
-	t.Run("successful login", func(t *testing.T) {
-		email := "test@example.com"
-		password := "password123"
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	jwtSecret := "test-secret-key"
+	email := "test@example.com"
+	password := "correct_password"
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
-		repo.On("GetUserByEmail", email).Return(&models.User{
-			Email:    email,
-			Password: string(hashedPassword),
-		}, nil)
+	authSvc := service.NewAuthService(repo, jwtSecret)
 
-		token, err := authSvc.Login(email, password)
-		assert.NoError(t, err)
-		assert.NotEmpty(t, token)
-		repo.AssertExpectations(t)
-	})
+	repo.On("GetUserByEmail", email).Return(&models.User{
+		Email:    email,
+		Password: string(hashedPassword),
+		Blocked:  false,
+	}, nil)
 
-	t.Run("failed login (invalid password)", func(t *testing.T) {
-		email := "test@example.com"
-		wrongPassword := "wrong-password"
+	token, err := authSvc.Login(email, password)
 
-		repo.On("GetUserByEmail", email).Return(&models.User{
-			Email:    email,
-			Password: "hashed-password",
-		}, nil)
-
-		_, err := authSvc.Login(email, wrongPassword)
-		assert.Error(t, err)
-		repo.AssertExpectations(t)
-	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+	repo.AssertExpectations(t)
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/luckermt/forum-app/shared/pkg/models"
 )
 
-// ForumService определяет контракт для сервиса форума
+
 type ForumService interface {
 	// Topics
 	CreateTopic(userID, title, content string) (*models.Topic, error)

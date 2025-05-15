@@ -4,14 +4,14 @@ import (
 	"net/http"
 
 	"github.com/joho/godotenv"
-	_ "github.com/luckermt/forum-app/auth-service/docs" // импорт сгенерированной docs
+	_ "github.com/luckermt/forum-app/auth-service/docs"
 	"github.com/luckermt/forum-app/auth-service/internal/grpc"
 	"github.com/luckermt/forum-app/auth-service/internal/handler"
 	"github.com/luckermt/forum-app/auth-service/internal/repository"
 	"github.com/luckermt/forum-app/auth-service/internal/service"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
-	httpSwagger "github.com/swaggo/http-swagger" // пакет для UI
+	httpSwagger "github.com/swaggo/http-swagger"
 	"go.uber.org/zap"
 )
 
@@ -30,7 +30,6 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	// 2. Загрузка .env файла
 	envPath := "D:/Programming_Code/VisualStudioCode/forum-app/.env"
 	if err := godotenv.Load(envPath); err != nil {
 		logger.Log.Fatal("Error loading .env file",
@@ -38,7 +37,6 @@ func main() {
 			zap.Error(err))
 	}
 
-	// 3. Загрузка конфигурации
 	cfg := config.Load()
 	logger.Log.Info("DB connection config",
 		zap.String("host", cfg.Postgres.Host),
@@ -46,17 +44,14 @@ func main() {
 		zap.String("user", cfg.Postgres.User),
 		zap.String("dbname", cfg.Postgres.DBName))
 
-	// 4. Инициализация репозитория
 	repo, err := repository.NewPostgresRepository(cfg.Postgres)
 	if err != nil {
 		logger.Log.Fatal("Failed to initialize repository", zap.Error(err))
 	}
 
-	// 5. Инициализация сервисов
-	authService := service.NewAuthService(repo, cfg.JWT)
+	authService := service.NewAuthService(repo, cfg.JWT.SecretKey)
 	grpcServer := grpc.NewAuthServer(authService)
 
-	// 6. Запуск gRPC сервера
 	go func() {
 		if err := grpcServer.Start(cfg.GRPC.AuthServicePort); err != nil {
 			logger.Log.Fatal("Failed to start gRPC server", zap.Error(err))
@@ -64,12 +59,11 @@ func main() {
 	}()
 	defer grpcServer.Stop()
 
-	// 7. Инициализация HTTP сервера
 	authHandler := handler.NewAuthHandler(authService)
 	http.HandleFunc("/register", authHandler.Register)
 	http.HandleFunc("/login", authHandler.Login)
 	http.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"), // Убедитесь, что путь правильный
+		httpSwagger.URL("/swagger/doc.json"),
 	))
 
 	logger.Log.Info("Starting auth service", zap.String("port", cfg.Server.Port))

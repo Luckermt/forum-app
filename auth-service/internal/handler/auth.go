@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,12 +15,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthHandler структура обработчика аутентификации
 type AuthHandler struct {
 	authService service.AuthService
 }
 
-// NewAuthHandler создает новый экземпляр AuthHandler
 func NewAuthHandler(authService service.AuthService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
@@ -148,7 +147,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
-	
+
 	token, err := h.authService.Login(req.Email, req.Password)
 	if err != nil {
 		logger.Log.Warn("Login attempt failed",
@@ -167,7 +166,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Успешная аутентификация
 	logger.Log.Info("User logged in",
 		zap.String("email", req.Email),
 	)
@@ -200,4 +198,22 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		logger.Log.Error("Registration failed", zap.Error(err))
 		writeError(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+func (h *AuthHandler) AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenString := r.Header.Get("Authorization")
+		if tokenString == "" {
+			writeError(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		userID, err := h.authService.ValidateToken(tokenString)
+		if err != nil {
+			writeError(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "userID", userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

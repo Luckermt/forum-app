@@ -14,7 +14,7 @@ import (
 
 // AuthServer реализует gRPC сервер для аутентификации
 type AuthServer struct {
-	grpcServer  *grpc.Server // переименовано из server в grpcServer для ясности
+	grpcServer  *grpc.Server
 	authService service.AuthService
 	proto.UnimplementedAuthServiceServer
 }
@@ -42,7 +42,7 @@ func (s *AuthServer) Start(port string) error {
 	return s.grpcServer.Serve(lis)
 }
 
-// Stop корректно останавливает gRPC сервер
+// Stop останавливает gRPC сервер
 func (s *AuthServer) Stop() {
 	if s.grpcServer != nil {
 		logger.Log.Info("Gracefully stopping gRPC server")
@@ -62,7 +62,7 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *proto.TokenRequest)
 	}, nil
 }
 
-// GetUserRole реализует gRPC метод получения роли пользователя
+
 func (s *AuthServer) GetUserRole(ctx context.Context, req *proto.UserRequest) (*proto.UserResponse, error) {
 	role, blocked, err := s.authService.GetUserRole(req.UserId)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// ForumService реализует mock для ForumService
+
 type ForumService struct {
 	mock.Mock
 }

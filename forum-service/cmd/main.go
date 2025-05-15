@@ -28,13 +28,12 @@ import (
 // @in header
 // @name Authorization
 func main() {
-	// Инициализация логгера
+
 	if err := logger.Init(); err != nil {
 		panic("Failed to initialize logger: " + err.Error())
 	}
 	defer logger.Log.Sync()
 
-	// Загрузка .env файла
 	envPath := "D:/Programming_Code/VisualStudioCode/forum-app/forum-service/.env"
 	if err := godotenv.Load(envPath); err != nil {
 		logger.Log.Fatal("Error loading .env file",
@@ -50,7 +49,6 @@ func main() {
 		zap.String("user", cfg.Postgres.User),
 		zap.String("dbname", cfg.Postgres.DBName))
 
-	// Инициализация репозитория
 	repo, err := repository.NewPostgresRepository(cfg.Postgres)
 	if err != nil {
 		logger.Log.Fatal("Failed to initialize repository", zap.Error(err))
@@ -71,10 +69,9 @@ func main() {
 	if err != nil {
 		logger.Log.Fatal("Failed to initialize auth client", zap.Error(err))
 	}
-	// Инициализация сервиса
+
 	forumService := service.NewForumService(repo, authClient)
 
-	// Инициализация HTTP обработчиков
 	forumHandler := handler.NewForumHandler(forumService)
 	chatHandler := handler.NewChatHandler(forumService)
 
@@ -85,10 +82,9 @@ func main() {
 	http.HandleFunc("GET /messages", forumHandler.GetMessages)
 	http.HandleFunc("/ws", chatHandler.HandleConnections)
 	http.Handle("/swagger/", httpSwagger.WrapHandler)
-	// Запуск очистки старых сообщений
+
 	go forumService.CleanOldMessages(24 * time.Hour)
 
-	// Запуск HTTP сервера
 	logger.Log.Info("Starting forum service", zap.String("port", cfg.Server.Port))
 	if err := http.ListenAndServe(":"+cfg.Server.Port, nil); err != nil {
 		logger.Log.Fatal("Failed to start forum service", zap.Error(err))

@@ -13,7 +13,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // В production замените на проверку origin
+		return true 
 	},
 }
 
@@ -49,7 +49,7 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 	}
 	defer conn.Close()
 
-	// Регистрация клиента
+	
 	h.service.RegisterClient(userID, conn)
 	defer h.service.UnregisterClient(userID)
 
@@ -67,7 +67,7 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 			break
 		}
 
-		// Обработка сообщения
+		
 		if err := h.service.HandleChatMessage(userID, msg.Text); err != nil {
 			logger.Log.Error("Failed to handle chat message",
 				zap.String("user_id", userID),
