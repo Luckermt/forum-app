@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/luckermt/forum-app/auth-service/docs"
@@ -11,47 +12,47 @@ import (
 	"github.com/luckermt/forum-app/auth-service/internal/service"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
+	"github.com/rs/cors"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"go.uber.org/zap"
 )
 
-// @Summary Регистрация пользователя
-// @Description Создание нового аккаунта
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param input body models.User true "Данные пользователя"
-// @Success 201 {object} models.User
-// @Router /register [post]
+// @title Auth Service API
+// @version 1.0
+// @description API для аутентификации и управления пользователями
+// @host localhost:8080
+// @BasePath /api
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
-	// 1. Инициализация логгера (самое первое!)
+	// Инициализация логгера
 	if err := logger.Init(); err != nil {
 		panic("Failed to initialize logger: " + err.Error())
 	}
 	defer logger.Log.Sync()
 
-	envPath := "D:/Programming_Code/VisualStudioCode/forum-app/.env"
-	if err := godotenv.Load(envPath); err != nil {
-		logger.Log.Fatal("Error loading .env file",
-			zap.String("path", envPath),
-			zap.Error(err))
+	// Загрузка конфигурации
+	if err := godotenv.Load(); err != nil {
+		logger.Log.Fatal("Error loading .env file", zap.Error(err))
 	}
 
 	cfg := config.Load()
-	logger.Log.Info("DB connection config",
-		zap.String("host", cfg.Postgres.Host),
-		zap.String("port", cfg.Postgres.Port),
-		zap.String("user", cfg.Postgres.User),
-		zap.String("dbname", cfg.Postgres.DBName))
+	logger.Log.Info("Starting auth service",
+		zap.String("port", cfg.Server.Port),
+		zap.String("grpc_port", cfg.GRPC.AuthServicePort))
 
+	// Инициализация репозитория
 	repo, err := repository.NewPostgresRepository(cfg.Postgres)
 	if err != nil {
 		logger.Log.Fatal("Failed to initialize repository", zap.Error(err))
 	}
 
+	// Создание сервиса
 	authService := service.NewAuthService(repo, cfg.JWT.SecretKey)
-	grpcServer := grpc.NewAuthServer(authService)
 
+	// Запуск gRPC сервера
+	grpcServer := grpc.NewAuthServer(authService)
 	go func() {
 		if err := grpcServer.Start(cfg.GRPC.AuthServicePort); err != nil {
 			logger.Log.Fatal("Failed to start gRPC server", zap.Error(err))
@@ -59,16 +60,44 @@ func main() {
 	}()
 	defer grpcServer.Stop()
 
+	// Создание HTTP обработчиков
 	authHandler := handler.NewAuthHandler(authService)
-	http.HandleFunc("/register", authHandler.Register)
-	http.HandleFunc("/login", authHandler.Login)
-	http.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
+	userHandler := handler.NewUserHandler(authService)
 
-	logger.Log.Info("Starting auth service", zap.String("port", cfg.Server.Port))
-	if err := http.ListenAndServe(":"+cfg.Server.Port, nil); err != nil {
-		logger.Log.Fatal("Failed to start auth service", zap.Error(err))
+	// Настройка маршрутов
+	mux := http.NewServeMux()
+
+	// Auth routes
+	mux.HandleFunc("POST /api/register", authHandler.Register)
+	mux.HandleFunc("POST /api/login", authHandler.Login)
+	mux.HandleFunc("GET /api/me", authHandler.GetCurrentUser)
+
+	// User routes
+	mux.HandleFunc("GET /api/users/{id}", userHandler.GetUser)
+	mux.HandleFunc("PUT /api/users/{id}", userHandler.UpdateUser)
+
+	// Swagger
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+
+	// Настройка CORS
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:8080", "http://127.0.0.1:8080"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+		Debug:            true,
+	})
+
+	// Запуск HTTP сервера
+	server := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      corsHandler.Handler(mux),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
+	logger.Log.Info("Starting HTTP server on port " + cfg.Server.Port)
+	if err := server.ListenAndServe(); err != nil {
+		logger.Log.Fatal("Failed to start HTTP server", zap.Error(err))
+	}
 }

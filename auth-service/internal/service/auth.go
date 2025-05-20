@@ -13,11 +13,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService определяет контракт сервиса аутентификации
 type AuthService interface {
 	Register(user *models.User) error
 	Login(email, password string) (string, error)
+	GetUserByID(userID string) (*models.User, error)
+	UpdateUser(userID, username, email string) (*models.User, error)
 	ValidateToken(token string) (string, error)
+	IsUserAdmin(userID string) (bool, error)
 	GetUserRole(userID string) (string, bool, error)
 }
 
@@ -27,7 +29,6 @@ type authServiceImpl struct {
 }
 
 func NewAuthService(repo repository.Repository, jwtSecret string) AuthService {
-	// Инициализация логгера при создании сервиса
 	if logger.Log == nil {
 		if err := logger.Init(); err != nil {
 			panic("Failed to initialize logger")
@@ -41,11 +42,6 @@ func NewAuthService(repo repository.Repository, jwtSecret string) AuthService {
 }
 
 func (s *authServiceImpl) Register(user *models.User) error {
-	// Проверка инициализации логгера
-	if logger.Log == nil {
-		return errors.New("logger not initialized")
-	}
-
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		logger.Log.Error("Failed to hash password", zap.Error(err))
@@ -61,49 +57,49 @@ func (s *authServiceImpl) Register(user *models.User) error {
 }
 
 func (s *authServiceImpl) Login(email, password string) (string, error) {
-
-	logger.Log.Debug("Login attempt",
-		zap.String("email", email),
-		zap.Time("timestamp", time.Now()),
-	)
-
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		logger.Log.Error("Database error",
-			zap.Error(err),
 			zap.String("email", email),
-		)
-		return "", fmt.Errorf("internal server error")
-	}
-
-	if user == nil {
-		logger.Log.Warn("User not found", zap.String("email", email))
+			zap.Error(err))
 		return "", ErrInvalidCredentials
 	}
 
-	logger.Log.Debug("User data from DB",
-		zap.String("db_email", user.Email),
-		zap.String("db_pwd_prefix", user.Password[:10]),
-		zap.Bool("blocked", user.Blocked),
-	)
-
 	if user.Blocked {
-		logger.Log.Warn("Blocked user attempt", zap.String("email", email))
 		return "", ErrUserBlocked
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		logger.Log.Warn("Password mismatch",
-			zap.String("input_pwd", maskPassword(password)),
-			zap.String("db_pwd_prefix", user.Password[:10]),
-			zap.Error(err),
-		)
 		return "", ErrInvalidCredentials
 	}
 
-	logger.Log.Info("Successful login", zap.String("email", email))
-	return s.generateJWTToken(user)
+	token, err := s.generateJWTToken(user)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func (s *authServiceImpl) GetUserByID(userID string) (*models.User, error) {
+	return s.repo.GetUserByID(userID)
+}
+
+func (s *authServiceImpl) UpdateUser(userID, username, email string) (*models.User, error) {
+	user, err := s.repo.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.Username = username
+	user.Email = email
+
+	if err := s.repo.UpdateUser(user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 func (s *authServiceImpl) generateJWTToken(user *models.User) (string, error) {
@@ -134,21 +130,17 @@ func (s *authServiceImpl) ValidateToken(tokenString string) (string, error) {
 	return "", err
 }
 
+func (s *authServiceImpl) IsUserAdmin(userID string) (bool, error) {
+	role, _, err := s.GetUserRole(userID)
+	return role == "admin", err
+}
+
 func (s *authServiceImpl) GetUserRole(userID string) (string, bool, error) {
 	user, err := s.repo.GetUserByID(userID)
 	if err != nil {
 		return "", false, err
 	}
 	return user.Role, user.Blocked, nil
-}
-func maskPassword(pwd string) string {
-	if len(pwd) == 0 {
-		return ""
-	}
-	if len(pwd) == 1 {
-		return "*"
-	}
-	return string(pwd[0]) + "***" + string(pwd[len(pwd)-1])
 }
 
 var (

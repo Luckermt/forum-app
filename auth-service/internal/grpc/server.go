@@ -22,10 +22,12 @@ type AuthServer struct {
 // NewAuthServer создает новый экземпляр AuthServer
 func NewAuthServer(authService service.AuthService) *AuthServer {
 	srv := grpc.NewServer()
-	return &AuthServer{
+	server := &AuthServer{
 		grpcServer:  srv,
 		authService: authService,
 	}
+	proto.RegisterAuthServiceServer(srv, server)
+	return server
 }
 
 // Start запускает gRPC сервер
@@ -62,7 +64,7 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *proto.TokenRequest)
 	}, nil
 }
 
-
+// GetUserRole реализует gRPC метод получения роли пользователя
 func (s *AuthServer) GetUserRole(ctx context.Context, req *proto.UserRequest) (*proto.UserResponse, error) {
 	role, blocked, err := s.authService.GetUserRole(req.UserId)
 	if err != nil {
@@ -71,5 +73,19 @@ func (s *AuthServer) GetUserRole(ctx context.Context, req *proto.UserRequest) (*
 	return &proto.UserResponse{
 		Role:    role,
 		Blocked: blocked,
+	}, nil
+}
+
+// GetUserInfo реализует gRPC метод получения информации о пользователе
+func (s *AuthServer) GetUserInfo(ctx context.Context, req *proto.UserRequest) (*proto.UserInfoResponse, error) {
+	user, err := s.authService.GetUserByID(req.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.UserInfoResponse{
+		Id:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		Role:     user.Role,
 	}, nil
 }

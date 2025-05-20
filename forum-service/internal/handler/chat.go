@@ -13,7 +13,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true 
+		return true // В production следует ограничить домены
 	},
 }
 
@@ -25,31 +25,33 @@ func NewChatHandler(service service.ForumService) *ChatHandler {
 	return &ChatHandler{service: service}
 }
 
-// @Summary WebSocket чат
-// @Description Подключение к чату через WebSocket
+// @Summary WebSocket соединение для чата
+// @Description Установка WebSocket соединения для чата
 // @Tags chat
 // @Param token query string true "JWT токен"
-// @Router /ws [get]
+// @Router /api/ws [get]
 func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
-	// Проверка аутентификации
 	token := r.URL.Query().Get("token")
+	if token == "" {
+		logger.Log.Warn("WebSocket connection attempt without token")
+		return
+	}
+
 	userID, err := h.service.ValidateUser(token)
 	if err != nil {
-		logger.Log.Error("Unauthorized websocket connection",
+		logger.Log.Warn("Invalid token for WebSocket connection",
 			zap.Error(err))
 		return
 	}
 
-	// Обновление соединения до WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Error("Failed to upgrade to websocket",
+		logger.Log.Error("Failed to upgrade to WebSocket",
 			zap.Error(err))
 		return
 	}
 	defer conn.Close()
 
-	
 	h.service.RegisterClient(userID, conn)
 	defer h.service.UnregisterClient(userID)
 
@@ -57,8 +59,8 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 		var msg struct {
 			Text string `json:"text"`
 		}
-		err := conn.ReadJSON(&msg)
-		if err != nil {
+
+		if err := conn.ReadJSON(&msg); err != nil {
 			if websocket.IsUnexpectedCloseError(err) {
 				logger.Log.Info("WebSocket closed",
 					zap.String("user_id", userID),
@@ -67,7 +69,6 @@ func (h *ChatHandler) HandleConnections(w http.ResponseWriter, r *http.Request) 
 			break
 		}
 
-		
 		if err := h.service.HandleChatMessage(userID, msg.Text); err != nil {
 			logger.Log.Error("Failed to handle chat message",
 				zap.String("user_id", userID),

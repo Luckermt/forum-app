@@ -17,6 +17,8 @@ type forumServiceImpl struct {
 	chatClients   map[string]*websocket.Conn
 	clientsMutex  sync.Mutex
 	broadcastChan chan models.Message
+	onlineUsers   map[string]bool
+	onlineMutex   sync.Mutex
 }
 
 func NewForumService(repo Repository, authClient AuthClient) *forumServiceImpl {
@@ -25,8 +27,10 @@ func NewForumService(repo Repository, authClient AuthClient) *forumServiceImpl {
 		authClient:    authClient,
 		chatClients:   make(map[string]*websocket.Conn),
 		broadcastChan: make(chan models.Message, 100),
+		onlineUsers:   make(map[string]bool),
 	}
 	go service.startMessageBroadcaster()
+	go service.cleanupInactiveUsers()
 	return service
 }
 
@@ -47,16 +51,66 @@ func (s *forumServiceImpl) CreateTopic(userID, title, content string) (*models.T
 		return nil, err
 	}
 
+	// Создаем первое сообщение в теме
+	message := &models.Message{
+		ID:        generateID(),
+		TopicID:   topic.ID,
+		UserID:    userID,
+		Content:   content,
+		CreatedAt: time.Now(),
+		IsChat:    false,
+	}
+
+	if err := s.repo.CreateMessage(message); err != nil {
+		logger.Log.Error("Failed to create initial topic message",
+			zap.String("topic_id", topic.ID),
+			zap.Error(err))
+		return nil, err
+	}
+
 	return topic, nil
 }
 
-func (s *forumServiceImpl) GetTopics() ([]*models.Topic, error) {
-	topics, err := s.repo.GetTopics()
+func (s *forumServiceImpl) GetTopics(page, limit int, search string) ([]*models.Topic, int, error) {
+	topics, err := s.repo.GetTopics(page, limit, search)
 	if err != nil {
-		logger.Log.Error("Failed to get topics", zap.Error(err))
-		return nil, err
+		logger.Log.Error("Failed to get topics", 
+			zap.Error(err),
+			zap.Int("page", page),
+			zap.Int("limit", limit))
+		return nil, 0, err
 	}
-	return topics, nil
+
+	total, err := s.repo.GetTopicsCount(search)
+	if err != nil {
+		logger.Log.Error("Failed to get topics count",
+			zap.Error(err))
+		return nil, 0, err
+	}
+
+	// Получаем информацию о пользователях для тем
+	for _, topic := range topics {
+		user, err := s.authClient.GetUserInfo(topic.UserID)
+		if err != nil {
+			logger.Log.Warn("Failed to get user info for topic",
+				zap.String("user_id", topic.UserID),
+				zap.Error(err))
+			continue
+		}
+		topic.Username = user.Username
+		
+		// Получаем количество сообщений в теме
+		count, err := s.repo.GetMessageCount(topic.ID)
+		if err != nil {
+			logger.Log.Warn("Failed to get message count for topic",
+				zap.String("topic_id", topic.ID),
+				zap.Error(err))
+			continue
+		}
+		topic.MessageCount = count
+	}
+
+	return topics, total, nil
 }
 
 func (s *forumServiceImpl) DeleteTopic(topicID, userID string) error {
@@ -77,6 +131,16 @@ func (s *forumServiceImpl) DeleteTopic(topicID, userID string) error {
 
 // Message methods
 func (s *forumServiceImpl) CreateMessage(message *models.Message) error {
+	// Получаем информацию о пользователе
+	user, err := s.authClient.GetUserInfo(message.UserID)
+	if err != nil {
+		logger.Log.Error("Failed to get user info for message",
+			zap.String("user_id", message.UserID),
+			zap.Error(err))
+		return err
+	}
+	message.Username = user.Username
+
 	if err := s.repo.CreateMessage(message); err != nil {
 		logger.Log.Error("Failed to create message",
 			zap.String("user_id", message.UserID),
@@ -99,6 +163,19 @@ func (s *forumServiceImpl) GetTopicMessages(topicID string) ([]*models.Message, 
 			zap.Error(err))
 		return nil, err
 	}
+
+	// Добавляем информацию о пользователях
+	for _, msg := range messages {
+		user, err := s.authClient.GetUserInfo(msg.UserID)
+		if err != nil {
+			logger.Log.Warn("Failed to get user info for message",
+				zap.String("user_id", msg.UserID),
+				zap.Error(err))
+			continue
+		}
+		msg.Username = user.Username
+	}
+
 	return messages, nil
 }
 
@@ -108,6 +185,19 @@ func (s *forumServiceImpl) GetChatMessages() ([]*models.Message, error) {
 		logger.Log.Error("Failed to get chat messages", zap.Error(err))
 		return nil, err
 	}
+
+	// Добавляем информацию о пользователях
+	for _, msg := range messages {
+		user, err := s.authClient.GetUserInfo(msg.UserID)
+		if err != nil {
+			logger.Log.Warn("Failed to get user info for chat message",
+				zap.String("user_id", msg.UserID),
+				zap.Error(err))
+			continue
+		}
+		msg.Username = user.Username
+	}
+
 	return messages, nil
 }
 
@@ -125,7 +215,16 @@ func (s *forumServiceImpl) DeleteMessagesOlderThan(maxAge time.Duration) error {
 func (s *forumServiceImpl) RegisterClient(userID string, conn *websocket.Conn) {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
+	
 	s.chatClients[userID] = conn
+	
+	s.onlineMutex.Lock()
+	s.onlineUsers[userID] = true
+	s.onlineMutex.Unlock()
+	
+	// Отправляем обновленное количество онлайн пользователей
+	s.broadcastOnlineCount()
+	
 	logger.Log.Info("New chat client registered",
 		zap.String("user_id", userID))
 }
@@ -133,7 +232,16 @@ func (s *forumServiceImpl) RegisterClient(userID string, conn *websocket.Conn) {
 func (s *forumServiceImpl) UnregisterClient(userID string) {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
+	
 	delete(s.chatClients, userID)
+	
+	s.onlineMutex.Lock()
+	delete(s.onlineUsers, userID)
+	s.onlineMutex.Unlock()
+	
+	// Отправляем обновленное количество онлайн пользователей
+	s.broadcastOnlineCount()
+	
 	logger.Log.Info("Chat client unregistered",
 		zap.String("user_id", userID))
 }
@@ -161,6 +269,56 @@ func (s *forumServiceImpl) CleanOldMessages(maxAge time.Duration) {
 	}
 }
 
+func (s *forumServiceImpl) cleanupInactiveUsers() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.clientsMutex.Lock()
+		for userID, conn := range s.chatClients {
+			if err := conn.WriteJSON(map[string]string{"type": "ping"}); err != nil {
+				logger.Log.Info("Removing inactive connection",
+					zap.String("user_id", userID),
+					zap.Error(err))
+				delete(s.chatClients, userID)
+				
+				s.onlineMutex.Lock()
+				delete(s.onlineUsers, userID)
+				s.onlineMutex.Unlock()
+			}
+		}
+		s.clientsMutex.Unlock()
+		
+		// Отправляем обновленное количество онлайн пользователей
+		s.broadcastOnlineCount()
+	}
+}
+
+func (s *forumServiceImpl) broadcastOnlineCount() {
+	s.onlineMutex.Lock()
+	count := len(s.onlineUsers)
+	s.onlineMutex.Unlock()
+
+	message := struct {
+		Type  string `json:"type"`
+		Count int    `json:"count"`
+	}{
+		Type:  "online_count",
+		Count: count,
+	}
+
+	s.clientsMutex.Lock()
+	defer s.clientsMutex.Unlock()
+
+	for userID, conn := range s.chatClients {
+		if err := conn.WriteJSON(message); err != nil {
+			logger.Log.Error("Failed to send online count",
+				zap.String("user_id", userID),
+				zap.Error(err))
+		}
+	}
+}
+
 // Auth methods
 func (s *forumServiceImpl) ValidateUser(token string) (string, error) {
 	return s.authClient.ValidateToken(token)
@@ -168,6 +326,15 @@ func (s *forumServiceImpl) ValidateUser(token string) (string, error) {
 
 func (s *forumServiceImpl) IsUserAdmin(userID string) (bool, error) {
 	return s.authClient.IsUserAdmin(userID)
+}
+
+// Admin methods
+func (s *forumServiceImpl) GetUsers(search string) ([]*models.User, error) {
+	return s.repo.GetUsers(search)
+}
+
+func (s *forumServiceImpl) BlockUser(userID string, blocked bool) error {
+	return s.repo.BlockUser(userID, blocked)
 }
 
 // Internal methods

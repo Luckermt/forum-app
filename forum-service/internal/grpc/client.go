@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/luckermt/forum-app/shared/pkg/models"
 	"github.com/luckermt/forum-app/shared/proto"
 	"google.golang.org/grpc"
 )
@@ -37,12 +38,25 @@ func (c *AuthClient) ValidateToken(token string) (string, error) {
 
 	return resp.UserId, nil
 }
+
 func (c *AuthClient) IsUserAdmin(userID string) (bool, error) {
-	resp, err := c.client.GetUserRole(context.Background(), &proto.UserRequest{
-		UserId: userID,
-	})
+	resp, err := c.client.GetUserRole(context.Background(), &proto.UserRequest{UserId: userID})
 	if err != nil {
 		return false, err
 	}
 	return resp.Role == "admin", nil
+}
+
+func (c *AuthClient) GetUserInfo(userID string) (*models.User, error) {
+	resp, err := c.client.GetUserInfo(context.Background(), &proto.UserRequest{UserId: userID})
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.User{
+		ID:       resp.Id,
+		Username: resp.Username,
+		Email:    resp.Email,
+		Role:     resp.Role,
+	}, nil
 }

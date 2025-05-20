@@ -11,6 +11,7 @@ import (
 	"github.com/luckermt/forum-app/auth-service/internal/service"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
+	"github.com/luckermt/forum-app/shared/pkg/utils"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -60,6 +61,42 @@ type UserResponse struct {
 // swagger:model
 type ErrorResponse struct {
 	Message string `json:"message" example:"error message"`
+}
+
+// @Summary Получить текущего пользователя
+// @Description Получение информации о текущем аутентифицированном пользователе
+// @Tags auth
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} models.UserResponse
+// @Failure 401 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Router /api/me [get]
+func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, err := utils.GetUserIDFromContext(r.Context())
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	user, err := h.authService.GetUserByID(userID)
+	if err != nil {
+		logger.Log.Error("Failed to get user",
+			zap.String("user_id", userID),
+			zap.Error(err))
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to get user")
+		return
+	}
+
+	response := models.UserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		Role:     user.Role,
+		Blocked:  user.Blocked,
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, response)
 }
 
 // Register обработчик регистрации пользователя
@@ -120,8 +157,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Log.Error("Failed to encode response", zap.Error(err))
+	}
 }
 
 // Login обработчик входа пользователя
@@ -170,10 +208,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		zap.String("email", req.Email),
 	)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(LoginResponse{
+	response := LoginResponse{
 		Token: token,
-	})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 func validatePassword(password string) error {
 	if len(password) < 8 {

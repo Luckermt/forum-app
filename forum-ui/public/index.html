@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Форумное сообщество</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Шапка -->
+        <header class="header">
+            <h1 class="logo">Форум</h1>
+            <div id="user-info" class="hidden">
+                <span id="username-display"></span>
+                <button id="logout-btn" class="btn btn-small">Выйти</button>
+            </div>
+        </header>
+
+        <!-- Основной контейнер -->
+        <div class="main-container">
+            <!-- Контейнер авторизации -->
+            <div id="auth-container" class="auth-container">
+                <div class="auth-tabs">
+                    <button class="tab-btn active" data-tab="login">Вход</button>
+                    <button class="tab-btn" data-tab="register">Регистрация</button>
+                </div>
+
+                <!-- Форма входа -->
+                <div id="login-form" class="auth-form">
+                    <div class="form-group">
+                        <label for="login-email">Email:</label>
+                        <input type="email" id="login-email" placeholder="Ваш email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Пароль:</label>
+                        <input type="password" id="login-password" placeholder="Ваш пароль" required>
+                    </div>
+                    <button id="login-btn" class="btn btn-primary">Войти</button>
+                    <div id="login-error" class="error-message"></div>
+                </div>
+
+                <!-- Форма регистрации -->
+                <div id="register-form" class="auth-form hidden">
+                    <div class="form-group">
+                        <label for="reg-username">Имя пользователя:</label>
+                        <input type="text" id="reg-username" placeholder="Придумайте имя" required minlength="3">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-email">Email:</label>
+                        <input type="email" id="reg-email" placeholder="Ваш email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password">Пароль:</label>
+                        <input type="password" id="reg-password" placeholder="Не менее 8 символов" required minlength="8">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-confirm">Подтвердите пароль:</label>
+                        <input type="password" id="reg-confirm" placeholder="Повторите пароль" required>
+                    </div>
+                    <button id="register-btn" class="btn btn-primary">Зарегистрироваться</button>
+                    <div id="register-error" class="error-message"></div>
+                </div>
+            </div>
+
+            <!-- Основной интерфейс форума (скрыт до авторизации) -->
+            <div id="forum-container" class="hidden">
+                <!-- Боковая панель с темами -->
+                <aside class="sidebar">
+                    <div class="sidebar-header">
+                        <h2>Темы</h2>
+                        <button id="new-topic-btn" class="btn btn-small"><i class="fas fa-plus"></i> Новая тема</button>
+                    </div>
+                    
+                    <div class="search-box">
+                        <input type="text" id="topic-search" placeholder="Поиск тем...">
+                        <button id="search-btn"><i class="fas fa-search"></i></button>
+                    </div>
+                    
+                    <div id="topics-list" class="topics-list">
+                        <!-- Темы будут загружаться здесь -->
+                    </div>
+                    
+                    <div class="pagination">
+                        <button id="prev-page" class="btn btn-small" disabled><i class="fas fa-chevron-left"></i></button>
+                        <span id="page-info">Страница 1</span>
+                        <button id="next-page" class="btn btn-small"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </aside>
+
+                <!-- Основное содержимое -->
+                <main class="content">
+                    <!-- Контейнер чата -->
+                    <div id="chat-container" class="chat-container">
+                        <div class="chat-header">
+                            <h2>Общий чат</h2>
+                            <div class="online-count">
+                                <i class="fas fa-users"></i> <span id="online-count">0</span> онлайн
+                            </div>
+                        </div>
+                        
+                        <div id="chat-messages" class="chat-messages">
+                            <!-- Сообщения чата будут здесь -->
+                        </div>
+                        
+                        <div class="chat-input">
+                            <input type="text" id="message-input" placeholder="Напишите сообщение..." disabled>
+                            <button id="send-btn" class="btn btn-primary" disabled><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Контейнер темы (скрыт по умолчанию) -->
+                    <div id="topic-container" class="topic-container hidden">
+                        <div class="topic-header">
+                            <button id="back-to-chat" class="btn btn-small"><i class="fas fa-arrow-left"></i> К чату</button>
+                            <h2 id="topic-title"></h2>
+                            <button id="delete-topic-btn" class="btn btn-danger btn-small hidden"><i class="fas fa-trash"></i> Удалить</button>
+                        </div>
+                        
+                        <div id="topic-messages" class="topic-messages">
+                            <!-- Сообщения темы будут здесь -->
+                        </div>
+                        
+                        <div class="topic-input">
+                            <input type="text" id="topic-message-input" placeholder="Напишите сообщение в тему...">
+                            <button id="send-topic-message-btn" class="btn btn-primary"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- Админ-панель (только для админов) -->
+                <div id="admin-panel" class="admin-panel hidden">
+                    <div class="admin-header">
+                        <h2>Админ-панель</h2>
+                        <button id="close-admin-btn" class="btn btn-small"><i class="fas fa-times"></i></button>
+                    </div>
+                    
+                    <div class="admin-tabs">
+                        <button class="tab-btn active" data-tab="users">Пользователи</button>
+                        <button class="tab-btn" data-tab="moderation">Модерация</button>
+                    </div>
+                    
+                    <div id="users-tab" class="admin-tab-content">
+                        <div class="search-box">
+                            <input type="text" id="user-search" placeholder="Поиск пользователей...">
+                            <button id="user-search-btn"><i class="fas fa-search"></i></button>
+                        </div>
+                        
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Имя</th>
+                                    <th>Email</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-list">
+                                <!-- Список пользователей -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="moderation-tab" class="admin-tab-content hidden">
+                        <h3>Последние действия</h3>
+                        <div id="moderation-log">
+                            <!-- Лог модерации -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно новой темы -->
+        <div id="new-topic-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Новая тема</h3>
+                    <button id="close-modal" class="btn btn-small"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="topic-title-input">Заголовок:</label>
+                        <input type="text" id="topic-title-input" placeholder="Название темы" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="topic-content-input">Первое сообщение:</label>
+                        <textarea id="topic-content-input" rows="4" placeholder="Текст сообщения" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancel-topic-btn" class="btn btn-secondary">Отмена</button>
+                    <button id="create-topic-btn" class="btn btn-primary">Создать тему</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Уведомления -->
+        <div id="notification" class="notification hidden"></div>
+    </div>
+
+    <!-- Скрипты -->
+    <script src="/js/auth.js"></script>
+    <script src="/js/chat.js"></script>
+    <script src="/js/topics.js"></script>
+    <script src="/js/admin.js"></script>
+    <script src="/mobile/js/mobile.js"></script>
+    
+    <script>
+        // Инициализация приложения после загрузки DOM
+        document.addEventListener('DOMContentLoaded', () => {
+            // Проверка авторизации при загрузке
+            const token = localStorage.getItem('forum_token');
+            if (token) {
+                // Проверить валидность токена
+                fetch('/api/validate-token', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        initApp(token);
+                    } else {
+                        showAuthContainer();
+                    }
+                })
+                .catch(() => showAuthContainer());
+            } else {
+                showAuthContainer();
+            }
+
+            // Обработчики вкладок авторизации
+            document.querySelectorAll('.auth-tabs .tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.auth-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.auth-form').forEach(f => f.classList.add('hidden'));
+                    
+                    btn.classList.add('active');
+                    const tab = btn.getAttribute('data-tab');
+                    document.getElementById(`${tab}-form`).classList.remove('hidden');
+                });
+            });
+
+            // Инициализация мобильного меню
+            if (/Mobi|Android/i.test(navigator.navigator.userAgent)) {
+                document.body.classList.add('mobile');
+                const menuButton = document.createElement('button');
+                menuButton.id = 'mobile-menu-btn';
+                menuButton.innerHTML = '<i class="fas fa-bars"></i>';
+                document.querySelector('.header').appendChild(menuButton);
+                
+                menuButton.addEventListener('click', () => {
+                    document.querySelector('.sidebar').classList.toggle('mobile-visible');
+                });
+            }
+        });
+
+        function initApp(token) {
+            // Показать интерфейс форума
+            document.getElementById('auth-container').classList.add('hidden');
+            document.getElementById('forum-container').classList.remove('hidden');
+            
+            // Установить имя пользователя
+            const userData = JSON.parse(localStorage.getItem('forum_user'));
+            if (userData) {
+                document.getElementById('username-display').textContent = userData.username;
+                document.getElementById('user-info').classList.remove('hidden');
+                
+                // Показать админ-панель для админов
+                if (userData.role === 'admin') {
+                    document.getElementById('admin-panel').classList.remove('hidden');
+                }
+            }
+            
+            // Инициализировать сервисы
+            ChatService.init(token);
+            TopicsService.init(token);
+            AdminService.init(token);
+        }
+
+        function showAuthContainer() {
+            document.getElementById('auth-container').classList.remove('hidden');
+            document.getElementById('forum-container').classList.add('hidden');
+            localStorage.removeItem('forum_token');
+            localStorage.removeItem('forum_user');
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+    </script>
+    <script>
+    // Глобальные вспомогательные функции
+    function showNotification(message, type = 'success') {
+        const notification = document.getElementById('notification');
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.classList.remove('hidden');
+        
+        setTimeout(() => {
+            notification.classList.add('hidden');
+        }, 3000);
+    }
+    
+    // Проверка авторизации при загрузке
+    document.addEventListener('DOMContentLoaded', () => {
+        const token = localStorage.getItem('forum_token');
+        const user = localStorage.getItem('forum_user');
+        
+        if (token && user) {
+            document.getElementById('auth-container').classList.add('hidden');
+            document.getElementById('forum-container').classList.remove('hidden');
+            
+            const userData = JSON.parse(user);
+            document.getElementById('username-display').textContent = userData.username;
+            document.getElementById('user-info').classList.remove('hidden');
+            
+            if (userData.role === 'admin') {
+                document.getElementById('admin-panel').classList.remove('hidden');
+            }
+        }
+    });
+    </script>
+</body>
+</html>

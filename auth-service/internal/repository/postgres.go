@@ -92,8 +92,24 @@ func (r *PostgresRepository) GetUserByID(userID string) (*models.User, error) {
 	return &user, nil
 }
 
-func (r *PostgresRepository) BlockUser(userID string) error {
-	query := `UPDATE users SET blocked = true WHERE id = $1`
-	_, err := r.db.Exec(query, userID)
-	return err
+func (r *PostgresRepository) BlockUser(userID string, blocked bool) error {
+	query := `UPDATE users SET blocked = $1 WHERE id = $2`
+	_, err := r.db.Exec(query, blocked, userID)
+	if err != nil {
+		return fmt.Errorf("failed to block user: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepository) UpdateUser(user *models.User) error {
+	query := `UPDATE users SET username = $1, email = $2 WHERE id = $3`
+	_, err := r.db.Exec(query, user.Username, user.Email, user.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepository) Close() error {
+	return r.db.Close()
 }

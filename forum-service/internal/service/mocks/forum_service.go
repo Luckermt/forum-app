@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-
 type ForumService struct {
 	mock.Mock
 }
@@ -20,13 +19,16 @@ func (m *ForumService) CreateTopic(userID, title, content string) (*models.Topic
 	}
 	return args.Get(0).(*models.Topic), args.Error(1)
 }
-
-func (m *ForumService) GetTopics() ([]*models.Topic, error) {
-	args := m.Called()
+func (m *ForumService) BlockUser(userID string, blocked bool) error {
+	args := m.Called(userID, blocked)
+	return args.Error(0)
+}
+func (m *ForumService) GetTopics(page, limit int, search string) ([]*models.Topic, int, error) {
+	args := m.Called(page, limit, search)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, 0, args.Error(2)
 	}
-	return args.Get(0).([]*models.Topic), args.Error(1)
+	return args.Get(0).([]*models.Topic), args.Int(1), args.Error(2)
 }
 
 func (m *ForumService) DeleteTopic(topicID, userID string) error {
@@ -85,4 +87,11 @@ func (m *ForumService) ValidateUser(token string) (string, error) {
 func (m *ForumService) IsUserAdmin(userID string) (bool, error) {
 	args := m.Called(userID)
 	return args.Bool(0), args.Error(1)
+}
+func (m *ForumService) GetUsers(search string) ([]*models.User, error) {
+	args := m.Called(search)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }

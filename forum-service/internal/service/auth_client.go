@@ -3,13 +3,14 @@ package service
 import (
 	"context"
 
+	"github.com/luckermt/forum-app/shared/pkg/models"
 	"github.com/luckermt/forum-app/shared/proto"
 )
 
-type AuthClient interface {
-	ValidateToken(token string) (string, error)
-	IsUserAdmin(userID string) (bool, error)
-}
+// type AuthClient interface {
+// 	ValidateToken(token string) (string, error)
+// 	IsUserAdmin(userID string) (bool, error)
+// }
 
 type GRPCAuthClient struct {
 	client proto.AuthServiceClient
@@ -36,4 +37,17 @@ func (c *GRPCAuthClient) IsUserAdmin(userID string) (bool, error) {
 		return false, err
 	}
 	return resp.Role == "admin", nil
+}
+func (c *GRPCAuthClient) GetUserInfo(userID string) (*models.User, error) {
+	resp, err := c.client.GetUserInfo(context.Background(), &proto.UserRequest{UserId: userID})
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.User{
+		ID:       resp.Id,
+		Username: resp.Username,
+		Email:    resp.Email,
+		Role:     resp.Role,
+	}, nil
 }

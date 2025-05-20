@@ -24,7 +24,12 @@ func (m *Repository) GetUserByID(userID string) (*models.User, error) {
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *Repository) BlockUser(userID string) error {
-	args := m.Called(userID)
+func (m *Repository) UpdateUser(user *models.User) error {
+	args := m.Called(user)
+	return args.Error(0)
+}
+
+func (m *Repository) BlockUser(userID string, blocked bool) error {
+	args := m.Called(userID, blocked)
 	return args.Error(0)
 }

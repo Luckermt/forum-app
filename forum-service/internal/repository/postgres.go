@@ -4,14 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"testing"
 	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/luckermt/forum-app/shared/pkg/config"
 	"github.com/luckermt/forum-app/shared/pkg/logger"
 	"github.com/luckermt/forum-app/shared/pkg/models"
-	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -20,7 +18,6 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(cfg config.PostgresConfig) (*PostgresRepository, error) {
-	
 	if logger.Log == nil {
 		if err := logger.Init(); err != nil {
 			return nil, fmt.Errorf("failed to initialize logger: %w", err)
@@ -32,9 +29,9 @@ func NewPostgresRepository(cfg config.PostgresConfig) (*PostgresRepository, erro
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
 	)
 
-	logger.Log.Info("Connecting to PostgreSQL", zap.String("connStr",
-		fmt.Sprintf("host=%s port=%s user=%s dbname=%s",
-			cfg.Host, cfg.Port, cfg.User, cfg.DBName)))
+	logger.Log.Info("Connecting to PostgreSQL",
+		zap.String("host", cfg.Host),
+		zap.String("dbname", cfg.DBName))
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -61,17 +58,25 @@ func (r *PostgresRepository) CreateTopic(topic *models.Topic) error {
 		topic.Content,
 		topic.UserID,
 		topic.CreatedAt,
-		false, // deleted по умолчанию false
+		false,
 	)
 	return err
 }
 
-func (r *PostgresRepository) GetTopics() ([]*models.Topic, error) {
-	query := `SELECT id, title, content, user_id, created_at 
-	          FROM topics WHERE deleted = false ORDER BY created_at DESC`
-	rows, err := r.db.Query(query)
+func (r *PostgresRepository) GetTopics(page, limit int, search string) ([]*models.Topic, error) {
+	offset := (page - 1) * limit
+	query := `
+		SELECT t.id, t.title, t.content, t.user_id, u.username, t.created_at
+		FROM topics t
+		JOIN users u ON t.user_id = u.id
+		WHERE t.deleted = false
+		AND ($1 = '' OR t.title ILIKE '%' || $1 || '%')
+		ORDER BY t.created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	rows, err := r.db.Query(query, search, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query topics: %w", err)
 	}
 	defer rows.Close()
 
@@ -83,15 +88,35 @@ func (r *PostgresRepository) GetTopics() ([]*models.Topic, error) {
 			&topic.Title,
 			&topic.Content,
 			&topic.UserID,
+			&topic.Username,
 			&topic.CreatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan topic: %w", err)
 		}
 		topics = append(topics, &topic)
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
 	return topics, nil
+}
+
+func (r *PostgresRepository) GetTopicsCount(search string) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) 
+		FROM topics
+		WHERE deleted = false
+		AND ($1 = '' OR title ILIKE '%' || $1 || '%')`
+
+	err := r.db.QueryRow(query, search).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get topics count: %w", err)
+	}
+	return count, nil
 }
 
 func (r *PostgresRepository) DeleteTopic(topicID string) error {
@@ -115,23 +140,16 @@ func (r *PostgresRepository) CreateMessage(message *models.Message) error {
 }
 
 func (r *PostgresRepository) GetMessagesByTopic(topicID string) ([]*models.Message, error) {
-	query := `SELECT id, topic_id, user_id, content, created_at 
-	          FROM messages WHERE topic_id = $1 AND is_chat = false 
-	          ORDER BY created_at ASC`
-	return r.queryMessages(query, topicID)
-}
+	query := `
+		SELECT m.id, m.topic_id, m.user_id, u.username, m.content, m.created_at
+		FROM messages m
+		JOIN users u ON m.user_id = u.id
+		WHERE m.topic_id = $1 AND m.is_chat = false
+		ORDER BY m.created_at ASC`
 
-func (r *PostgresRepository) GetChatMessages() ([]*models.Message, error) {
-	query := `SELECT id, topic_id, user_id, content, created_at 
-	          FROM messages WHERE is_chat = true 
-	          ORDER BY created_at ASC`
-	return r.queryMessages(query)
-}
-
-func (r *PostgresRepository) queryMessages(query string, args ...interface{}) ([]*models.Message, error) {
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.db.Query(query, topicID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query topic messages: %w", err)
 	}
 	defer rows.Close()
 
@@ -142,16 +160,69 @@ func (r *PostgresRepository) queryMessages(query string, args ...interface{}) ([
 			&msg.ID,
 			&msg.TopicID,
 			&msg.UserID,
+			&msg.Username,
 			&msg.Content,
 			&msg.CreatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 		messages = append(messages, &msg)
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
 	return messages, nil
+}
+
+func (r *PostgresRepository) GetChatMessages() ([]*models.Message, error) {
+	query := `
+		SELECT m.id, m.topic_id, m.user_id, u.username, m.content, m.created_at
+		FROM messages m
+		JOIN users u ON m.user_id = u.id
+		WHERE m.is_chat = true
+		ORDER BY m.created_at ASC`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query chat messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []*models.Message
+	for rows.Next() {
+		var msg models.Message
+		err := rows.Scan(
+			&msg.ID,
+			&msg.TopicID,
+			&msg.UserID,
+			&msg.Username,
+			&msg.Content,
+			&msg.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		messages = append(messages, &msg)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return messages, nil
+}
+
+func (r *PostgresRepository) GetMessageCount(topicID string) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM messages WHERE topic_id = $1 AND is_chat = false`
+	err := r.db.QueryRow(query, topicID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get message count: %w", err)
+	}
+	return count, nil
 }
 
 func (r *PostgresRepository) DeleteMessagesOlderThan(maxAge time.Duration) error {
@@ -160,54 +231,52 @@ func (r *PostgresRepository) DeleteMessagesOlderThan(maxAge time.Duration) error
 	return err
 }
 
-func (r *PostgresRepository) IsUserBlocked(userID string) (bool, error) {
-	query := `SELECT blocked FROM users WHERE id = $1`
-	var blocked bool
-	err := r.db.QueryRow(query, userID).Scan(&blocked)
-	if err == sql.ErrNoRows {
-		return false, nil
+func (r *PostgresRepository) GetUsers(search string) ([]*models.User, error) {
+	query := `
+		SELECT id, username, email, role, blocked, created_at
+		FROM users
+		WHERE ($1 = '' OR username ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.Query(query, search)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
 	}
-	return blocked, err
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.Role,
+			&user.Blocked,
+			&user.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, &user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return users, nil
 }
-func TestPostgresRepository_CreateTopic(t *testing.T) {
-	cfg := config.PostgresConfig{
-		Host:     "localhost",
-		Port:     "5432",
-		User:     "postgres",
-		Password: "postgres",
-		DBName:   "forum_test",
-		SSLMode:  "disable",
-	}
 
-	repo, err := NewPostgresRepository(cfg)
-	assert.NoError(t, err)
-
-	topic := &models.Topic{
-		ID:        "test-topic-id",
-		Title:     "Test Topic",
-		Content:   "Test Content",
-		UserID:    "test-user-id",
-		CreatedAt: time.Now(),
-	}
-
-	err = repo.CreateTopic(topic)
-	assert.NoError(t, err)
+func (r *PostgresRepository) BlockUser(userID string, blocked bool) error {
+	query := `UPDATE users SET blocked = $1 WHERE id = $2`
+	_, err := r.db.Exec(query, blocked, userID)
+	return err
 }
 
-func TestPostgresRepository_GetTopics(t *testing.T) {
-	cfg := config.PostgresConfig{
-		Host:     "localhost",
-		Port:     "5432",
-		User:     "postgres",
-		Password: "postgres",
-		DBName:   "forum_test",
-		SSLMode:  "disable",
+func (r *PostgresRepository) Close() error {
+	if r.db != nil {
+		return r.db.Close()
 	}
-
-	repo, err := NewPostgresRepository(cfg)
-	assert.NoError(t, err)
-
-	topics, err := repo.GetTopics()
-	assert.NoError(t, err)
-	assert.NotNil(t, topics)
+	return nil
 }
